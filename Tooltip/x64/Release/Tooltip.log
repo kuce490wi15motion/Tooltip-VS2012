@@ -1,0 +1,8 @@
+﻿  stdafx.cpp
+  ToolData.cpp
+  Tooltip.cpp
+Tooltip.cpp(411): warning C4244: 'argument' : conversion from 'double' to 'int', possible loss of data
+Tooltip.cpp(412): warning C4244: 'argument' : conversion from 'double' to 'int', possible loss of data
+  Generating code
+  Finished generating code
+  Tooltip.vcxproj -> C:\Users\Michael\Documents\Visual Studio 2012\Projects\Tooltip\x64\Release\Tooltip.exe
