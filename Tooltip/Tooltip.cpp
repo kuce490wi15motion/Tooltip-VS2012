@@ -21,7 +21,11 @@
 #include <vector>
 #include <exception>
 #include <DepthSense.hxx>
-
+#include "tchar.h"
+#include "SerialClass.h"	// Library described above
+#include "string"
+#include "math.h"
+//#include "serial.cpp"
 #include "ToolData.cpp"
 
 #ifdef _MSC_VER
@@ -36,6 +40,15 @@ using namespace std;
 //Global Variables
 	int16_t leftDepth;
 	int16_t rightDepth;
+
+//Gobal Vairables for Arduino
+	Serial* SP;
+	char* sendCharacter = "!";
+	char incomingData[36] = "";			
+	// don't forget to pre-allocate memory
+	//printf("%s\n",incomingData);
+	int dataLength = 36;
+	int readResult = 0;
 
 
 //DS325 Nodes
@@ -67,15 +80,18 @@ bool g_bDeviceFound = false;
 int depthVal =0;
 double toolArea = 90000;
 
-//Struct data for Tracking
+//Struct data for Tracking & Sensing
 int dataPosition =0;
 ToolData GripperData [10000];
 ToolData GripperExpert [10000];
 
 //objects to track. Green LH Gripper
 int16_t gripperLeft[3] = {0,0,0};
+float leftTool[3] = {0,0,0};
 //objects to track. Red RH Gripper
 int16_t gripperRight[3] = {0,0,0};
+float rightTool[3] = {0,0,0};
+
 
 /*//control variables for threshold adjustment
 int iLowH = 0;
@@ -267,6 +283,97 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 }
 
 /*----------------------------------------------------------------------------*/
+void getSensorData() {
+	if(SP->IsConnected())
+	{
+		SP->WriteData(sendCharacter,8);
+		readResult = SP->ReadData(incomingData,dataLength);
+		//printf("Bytes read: (-1 means no data available) %i\n",readResult);
+
+		//readresult value will change!!!
+		if (readResult == 35) {
+			union {float f1;char b[4];} xAccel;
+			xAccel.b[3] = incomingData[4];
+			xAccel.b[2] = incomingData[3];
+			xAccel.b[1] = incomingData[2];
+			xAccel.b[0] = incomingData[1];
+		
+			union {float f2;char b[4];} yAccel;
+			yAccel.b[3] = incomingData[8];
+			yAccel.b[2] = incomingData[7];
+			yAccel.b[1] = incomingData[6];
+			yAccel.b[0] = incomingData[5];
+
+			union {float f3;char b[4];} zAccel;
+			zAccel.b[3] = incomingData[12];
+			zAccel.b[2] = incomingData[11];
+			zAccel.b[1] = incomingData[10];
+			zAccel.b[0] = incomingData[9];
+
+			union {float f4;char b[4];} xGyro;
+			xGyro.b[3] = incomingData[17];
+			xGyro.b[2] = incomingData[16];
+			xGyro.b[1] = incomingData[15];
+			xGyro.b[0] = incomingData[14];
+		
+			union {float f5;char b[4];} yGyro;
+			yGyro.b[3] = incomingData[21];
+			yGyro.b[2] = incomingData[20];
+			yGyro.b[1] = incomingData[19];
+			yGyro.b[0] = incomingData[18];
+
+			union {float f6;char b[4];} zGyro;
+			zGyro.b[3] = incomingData[25];
+			zGyro.b[2] = incomingData[24];
+			zGyro.b[1] = incomingData[23];
+			zGyro.b[0] = incomingData[22];
+
+			union {int i1;char b[4];} rotary1;
+			rotary1.b[3] = incomingData[32];
+			rotary1.b[2] = incomingData[31];
+			rotary1.b[1] = incomingData[30];
+			rotary1.b[0] = incomingData[29];
+
+
+			GripperData[dataPosition].rightAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
+
+			printf("\n Acceleration Right Tool: %f\n",GripperData[dataPosition].rightAccel);
+			//get gripper status
+
+			//get encoder status
+
+			//get gyro status
+
+		}
+
+
+
+
+	}
+
+}
+/*----------------------------------------------------------------------------*/
+float analysis() {
+	//float totalResult,tooltipResult,senseResult,bodyResult,taskResult =0;
+	float distanceToolL=0.0;;
+	float distanceToolR=0.0;
+	float accelL=0.0;
+	float accelR=0.0;
+	float totalResult=0.0;
+	int length= sizeof(GripperData)/sizeof(ToolData);
+	for (int i=0;i <length;i++) {
+
+		distanceToolL += sqrt(pow((GripperData[i].leftXPos- GripperExpert[i].leftXPos),2)+pow((GripperData[i].leftYPos- GripperExpert[i].leftYPos),2)+pow((GripperData[i].leftZPos- GripperExpert[i].leftZPos),2));
+		distanceToolR += sqrt(pow((GripperData[i].rightXPos- GripperExpert[i].rightXPos),2)+pow((GripperData[i].rightYPos- GripperExpert[i].rightYPos),2)+pow((GripperData[i].rightZPos- GripperExpert[i].rightZPos),2));
+
+		accelL+=GripperData[i].leftAccel;
+		accelR+=GripperData[i].rightAccel;
+
+	}
+	//more analysis needed
+	return totalResult;
+}
+/*----------------------------------------------------------------------------*/
 // New audio sample event handler
 void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 {
@@ -328,6 +435,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 
 		
 		searchForMovement(imgThresholded2,finalFrame,'L');
+		getSensorData();
 
 		imshow("Thresholded Image Red", imgThresholded); //show the thresholded image
 		imshow("Thresholded Image Green", imgThresholded2); //show the thresholded image
@@ -659,6 +767,18 @@ void onDeviceDisconnected(Context context, Context::DeviceRemovedData data)
 }
 
 /*----------------------------------------------------------------------------*/
+void sensorConnect() {
+	SP = new Serial("COM4");    // adjust as needed
+	if (SP->IsConnected())
+		printf("We're connected\n");
+
+
+
+
+
+}
+/*----------------------------------------------------------------------------*/
+
 
 int main(int argc, char* argv[])
 {
@@ -711,6 +831,7 @@ int main(int argc, char* argv[])
 	cvCreateTrackbar("LowV2","Control", &iLowV2, 255); //Value (0 - 255)
 	cvCreateTrackbar("HighV2","Control", &iHighV2, 255);
 	*/
+	sensorConnect();
 	g_depthImage = cvCreateImage(g_szDepth,IPL_DEPTH_16S,1);
     g_context.startNodes();
     g_context.run();
@@ -724,6 +845,8 @@ int main(int argc, char* argv[])
         delete g_pProjHelper;
 
 	//getchar();
+	analysis();
+	getchar();
     return 0;
 }
 
