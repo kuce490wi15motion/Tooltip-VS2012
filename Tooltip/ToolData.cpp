@@ -3,5 +3,5 @@
 struct ToolData {
 	float leftXPos, leftYPos, leftZPos,leftAccel,leftGyro,leftRotary;
 	float rightXPos, rightYPos, rightZPos, rightAccel, rightGyro, rightRotary;
-	time_t Duration;
+	__int32 Duration;
 };

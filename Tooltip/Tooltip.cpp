@@ -17,6 +17,8 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 #include <iostream>
+#include <fstream>
+#include <cstring>
 #include <stdio.h>
 #include <vector>
 #include <exception>
@@ -182,6 +184,7 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 			GripperData[dataPosition].leftXPos = (float) xpos;
 			GripperData[dataPosition].leftYPos = (float) ypos;
 			GripperData[dataPosition].leftZPos  = (float) gripperLeft[2];
+			GripperData[dataPosition].Duration  = g_cFrames;
 			//GripperData[dataPosition].
 			dataPosition++;
 		}
@@ -355,12 +358,16 @@ void getSensorData() {
 /*----------------------------------------------------------------------------*/
 float analysis() {
 	//float totalResult,tooltipResult,senseResult,bodyResult,taskResult =0;
+	float tooltipResult=0.0;
+	float senseResult=0.0;
 	float distanceToolL=0.0;;
 	float distanceToolR=0.0;
 	float accelL=0.0;
 	float accelR=0.0;
 	float totalResult=0.0;
 	int length= sizeof(GripperData)/sizeof(ToolData);
+	int realLength=0;
+
 	for (int i=0;i <length;i++) {
 
 		distanceToolL += sqrt(pow((GripperData[i].leftXPos- GripperExpert[i].leftXPos),2)+pow((GripperData[i].leftYPos- GripperExpert[i].leftYPos),2)+pow((GripperData[i].leftZPos- GripperExpert[i].leftZPos),2));
@@ -369,8 +376,14 @@ float analysis() {
 		accelL+=GripperData[i].leftAccel;
 		accelR+=GripperData[i].rightAccel;
 
+
 	}
-	//more analysis needed
+
+	tooltipResult = (distanceToolR+ distanceToolL)/ (2*length);
+	senseResult = (accelR+ accelL)/ (2*length);
+	totalResult = senseResult + tooltipResult;
+	//more analysis needed, currently, priority is given to Right tool
+
 	return totalResult;
 }
 /*----------------------------------------------------------------------------*/
@@ -432,7 +445,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 		//morphological closing (fill small holes in the foreground)
 		dilate(imgThresholded2, imgThresholded2, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)) ); 
 		erode(imgThresholded2, imgThresholded2, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)) );
-
+		
 		
 		searchForMovement(imgThresholded2,finalFrame,'L');
 		getSensorData();
@@ -452,6 +465,10 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 		char key = cvWaitKey(1);
 		if (key==27) {
 			printf("Quitting main loop from OpenCV\n");
+			g_context.quit();
+
+		// Quit the main loop after 7500 depth frames received
+		if (g_cFrames >= 7500)
 			g_context.quit();
 		}
 	}
@@ -531,10 +548,6 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 	}
 
 	   g_dFrames++;
-
-    // Quit the main loop after 7500 depth frames received
-    if (g_dFrames == 7500)
-        g_context.quit();
 }
 
 /*// old depth sample event handler
@@ -778,10 +791,97 @@ void sensorConnect() {
 
 }
 /*----------------------------------------------------------------------------*/
+void saveAsExpert() {
+	ofstream expertFile;
+	expertFile.open ("ExpertData.dat",ios::out);
+	int length= sizeof(GripperData)/sizeof(ToolData);
+
+	if(expertFile.is_open()) {
+		for (int i=0;i <length;i++) {
+		expertFile << GripperData[i].leftXPos  << ';';
+		expertFile << GripperData[i].leftYPos  << ';';
+		expertFile << GripperData[i].leftZPos  << ';';
+		expertFile << GripperData[i].leftAccel << ';';
+		expertFile << GripperData[i].leftGyro  << ';';
+		expertFile << GripperData[i].leftRotary<< ';';
+
+		expertFile << GripperData[i].rightXPos  << ';';
+		expertFile << GripperData[i].rightYPos  << ';';
+		expertFile << GripperData[i].rightZPos  << ';';
+		expertFile << GripperData[i].rightAccel << ';';
+		expertFile << GripperData[i].rightGyro  << ';';
+		expertFile << GripperData[i].rightRotary<< ';';
+
+		expertFile << GripperData[i].Duration << ';'<<'\n';
+		}
+		
+		expertFile.close();
+	}
+	else cout << "Unable to open file"; 
+}
+/*----------------------------------------------------------------------------*/
+void loadExpert() {
+	ifstream expertFile;
+	string temp;
+	expertFile.open ("ExpertData.dat",ios::in);
+	int length= sizeof(GripperData)/sizeof(ToolData);
+
+	if(expertFile.is_open()) {
+		for (int i=0;i <length;i++) {
+			if(expertFile.good()) {
+				expertFile >> GripperExpert[i].leftXPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].leftYPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].leftZPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].leftAccel;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].leftGyro;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].leftRotary;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightXPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightYPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightZPos;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightAccel;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightGyro;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].rightRotary;
+				getline(expertFile,temp,';');
+
+				expertFile >> GripperExpert[i].Duration;
+				getline(expertFile,temp,';');
+			}
+		}
+		
+		expertFile.close();
+	}
+	else cout << "Unable to open file"; 
+}
+/*----------------------------------------------------------------------------*/
 
 
 int main(int argc, char* argv[])
 {
+	loadExpert();
+	//getchar();
+	float finalResult =0.0;
     g_context = Context::create("localhost");
     g_context.deviceAddedEvent().connect(&onDeviceConnected);
     g_context.deviceRemovedEvent().connect(&onDeviceDisconnected);
@@ -844,9 +944,13 @@ int main(int argc, char* argv[])
     if (g_pProjHelper)
         delete g_pProjHelper;
 
+
+	saveAsExpert();
 	//getchar();
-	analysis();
+	finalResult = analysis();
+	printf("Analysis Complete, Total Result: %f \n",finalResult);
 	getchar();
+
     return 0;
 }
 
