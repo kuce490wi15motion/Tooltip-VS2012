@@ -45,7 +45,8 @@ using namespace std;
 
 //Gobal Vairables for Arduino
 	Serial* SP;
-	char* sendCharacter = "!";
+	char* sendCharacterL = "!";
+	char* sendCharacterR = "*";
 	char incomingData[36] = "";			
 	// don't forget to pre-allocate memory
 	//printf("%s\n",incomingData);
@@ -117,13 +118,13 @@ int iLowV = 0;
 int iHighV = 255;
 
 //HSV values for Green (LH Gripper)
-int iLowH2 = 46;
-int iHighH2 = 60;
+int iLowH2 = 50;
+int iHighH2 = 80;
 
-int iLowS2 = 40; 
+int iLowS2 = 50; 
 int iHighS2 = 255;
 
-int iLowV2 = 40;
+int iLowV2 = 50;
 int iHighV2 = 255;
 
 //our sensitivity value to be used in the threshold() function
@@ -289,11 +290,72 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 void getSensorData() {
 	if(SP->IsConnected())
 	{
-		SP->WriteData(sendCharacter,8);
+		SP->WriteData(sendCharacterL,8);
 		readResult = SP->ReadData(incomingData,dataLength);
 		//printf("Bytes read: (-1 means no data available) %i\n",readResult);
 
 		//readresult value will change!!!
+		if (readResult >= 35) {
+			union {float f1;char b[4];} xAccel;
+			xAccel.b[3] = incomingData[4];
+			xAccel.b[2] = incomingData[3];
+			xAccel.b[1] = incomingData[2];
+			xAccel.b[0] = incomingData[1];
+		
+			union {float f2;char b[4];} yAccel;
+			yAccel.b[3] = incomingData[8];
+			yAccel.b[2] = incomingData[7];
+			yAccel.b[1] = incomingData[6];
+			yAccel.b[0] = incomingData[5];
+
+			union {float f3;char b[4];} zAccel;
+			zAccel.b[3] = incomingData[12];
+			zAccel.b[2] = incomingData[11];
+			zAccel.b[1] = incomingData[10];
+			zAccel.b[0] = incomingData[9];
+
+			union {float f4;char b[4];} xGyro;
+			xGyro.b[3] = incomingData[17];
+			xGyro.b[2] = incomingData[16];
+			xGyro.b[1] = incomingData[15];
+			xGyro.b[0] = incomingData[14];
+		
+			union {float f5;char b[4];} yGyro;
+			yGyro.b[3] = incomingData[21];
+			yGyro.b[2] = incomingData[20];
+			yGyro.b[1] = incomingData[19];
+			yGyro.b[0] = incomingData[18];
+
+			union {float f6;char b[4];} zGyro;
+			zGyro.b[3] = incomingData[25];
+			zGyro.b[2] = incomingData[24];
+			zGyro.b[1] = incomingData[23];
+			zGyro.b[0] = incomingData[22];
+
+			union {int i1;char b[4];} rotary1;
+			rotary1.b[3] = incomingData[32];
+			rotary1.b[2] = incomingData[31];
+			rotary1.b[1] = incomingData[30];
+			rotary1.b[0] = incomingData[29];
+
+
+			GripperData[dataPosition].leftAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
+			float gyro = sqrt(xGyro.f4 *xGyro.f4 + yGyro.f5 * yGyro.f5 + zGyro.f6 * zGyro.f6);
+
+			printf("\n Acceleration Left Tool: %f\n",GripperData[dataPosition].leftAccel);
+			printf("\n Gyro Left Tool: %f\n",gyro);
+			printf("\nButton L data: %i\n",incomingData[27]);
+			//get gripper status
+
+			//get encoder status
+
+			//get gyro status
+
+		}
+		/*
+		SP->WriteData(sendCharacterR,8);
+		readResult = SP->ReadData(incomingData,dataLength);
+
 		if (readResult == 35) {
 			union {float f1;char b[4];} xAccel;
 			xAccel.b[3] = incomingData[4];
@@ -341,6 +403,7 @@ void getSensorData() {
 			GripperData[dataPosition].rightAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
 
 			printf("\n Acceleration Right Tool: %f\n",GripperData[dataPosition].rightAccel);
+			printf("\nButton R data: %i\n",incomingData[27]);
 			//get gripper status
 
 			//get encoder status
@@ -348,8 +411,7 @@ void getSensorData() {
 			//get gyro status
 
 		}
-
-
+		*/
 
 
 	}
@@ -544,7 +606,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 		if (rightDepth >=0 && rightDepth <= 31999) {
 		gripperRight[2] = rightDepth;
 		}
-		cv::imshow("Depth Camera", depthRR);
+		//cv::imshow("Depth Camera", depthRR);
 	}
 
 	   g_dFrames++;
@@ -781,13 +843,9 @@ void onDeviceDisconnected(Context context, Context::DeviceRemovedData data)
 
 /*----------------------------------------------------------------------------*/
 void sensorConnect() {
-	SP = new Serial("COM4");    // adjust as needed
+	SP = new Serial("COM6");    // adjust as needed
 	if (SP->IsConnected())
 		printf("We're connected\n");
-
-
-
-
 
 }
 /*----------------------------------------------------------------------------*/
