@@ -20,6 +20,7 @@
 #include <fstream>
 #include <cstring>
 #include <stdio.h>
+#include <stdlib.h>
 #include <vector>
 #include <exception>
 #include <DepthSense.hxx>
@@ -937,6 +938,9 @@ void loadExpert() {
 
 int main(int argc, char* argv[])
 {
+	printf("Press Enter to Start \n");
+	getchar();
+	Sleep(5000);
 	loadExpert();
 	//getchar();
 	float finalResult =0.0;
