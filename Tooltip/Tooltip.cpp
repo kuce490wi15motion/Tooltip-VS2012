@@ -20,15 +20,13 @@
 #include <fstream>
 #include <cstring>
 #include <stdio.h>
-#include <stdlib.h>
 #include <vector>
 #include <exception>
 #include <DepthSense.hxx>
 #include "tchar.h"
-#include "SerialClass.h"	// Library described above
+#include "SerialClass.h"
 #include "string"
 #include "math.h"
-//#include "serial.cpp"
 #include "ToolData.cpp"
 
 #ifdef _MSC_VER
@@ -41,18 +39,18 @@ using namespace cv;
 using namespace std;
 
 //Global Variables
-	int16_t leftDepth;
-	int16_t rightDepth;
+int16_t leftDepth;
+int16_t rightDepth;
 
 //Gobal Vairables for Arduino
-	Serial* SP;
-	char* sendCharacterL = "!";
-	char* sendCharacterR = "*";
-	char incomingData[36] = "";			
-	// don't forget to pre-allocate memory
-	//printf("%s\n",incomingData);
-	int dataLength = 36;
-	int readResult = 0;
+Serial* SP;
+char* sendCharacterL = "!";
+char* sendCharacterR = "*";
+char* sendCharacterAll= "&";
+char incomingDataL[58] = "";
+char incomingDataR[29] = "";	
+int dataLength = 58;
+int readResult = 0;
 
 
 //DS325 Nodes
@@ -72,15 +70,15 @@ IplImage* img = cvLoadImage("DefaultSpace.jpg", 1);
 IplImage* g_depthImage = NULL; 
 Mat prevFrame(img);
 
-
 //Global Frames
 Mat livefeed;
 Mat depthfeed;
 Mat depthFrame;
-//g_szVideo=cvSize(1280,720); //WXGA_H
+Mat finalFrame;
+Mat imgThresholded;
+Mat imgThresholded2;
 
 bool g_bDeviceFound = false;
-
 int depthVal =0;
 double toolArea = 90000;
 
@@ -89,24 +87,12 @@ int dataPosition =0;
 ToolData GripperData [10000];
 ToolData GripperExpert [10000];
 
-//objects to track. Green LH Gripper
+//objects to track. LH Gripper
 int16_t gripperLeft[3] = {0,0,0};
 float leftTool[3] = {0,0,0};
-//objects to track. Red RH Gripper
+//objects to track. RH Gripper
 int16_t gripperRight[3] = {0,0,0};
 float rightTool[3] = {0,0,0};
-
-
-/*//control variables for threshold adjustment
-int iLowH = 0;
-int iHighH = 179;
-
-int iLowS = 0; 
-int iHighS = 255;
-
-int iLowV = 0;
-int iHighV = 255;
-*/
 
 //HSV values for Red (RH Gripper) 
 int iLowH = 160;
@@ -153,7 +139,7 @@ string intToString(int number){
 //tracking function to find objects
 void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 	int x,y =0;
-	//Scalar color =(0,0,0);
+	
 	//notice how we use the '&' operator for objectDetected and cameraFeed. This is because we wish
 	//to take the values passed into the function and manipulate them, rather than just working with a copy.
 	//eg. we draw to the cameraFeed to be displayed in the main() function.
@@ -180,7 +166,7 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 			GripperData[dataPosition].rightYPos = (float) ypos;
 			GripperData[dataPosition].rightZPos  = (float) gripperRight[2];
 			//GripperData[dataPosition].
-	}
+		}
 		if (toolType == 'L') {
 			gripperLeft[0] = (int) xpos , gripperLeft[1] = (int) ypos;
 			GripperData[dataPosition].leftXPos = (float) xpos;
@@ -192,34 +178,34 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 		}
 
 		//make some temp x and y variables so we dont have to type out so much
-	if (toolType == 'R') {
-		x = gripperRight[0];
-		y = gripperRight[1];
-		depthVal = gripperRight[2];
-	}
-	if (toolType == 'L') {
-		x = gripperLeft[0];
-		y = gripperLeft[1];
-		depthVal = gripperLeft[2];
-	}
+		if (toolType == 'R') {
+			x = gripperRight[0];
+			y = gripperRight[1];
+			depthVal = gripperRight[2];
+		}
+		if (toolType == 'L') {
+			x = gripperLeft[0];
+			y = gripperLeft[1];
+			depthVal = gripperLeft[2];
+		}
 	
-	//draw some crosshairs around the object
-	circle(cameraFeed,Point(x,y),10,Scalar(0,255,0),2);
-	line(cameraFeed,Point(x,y),Point(x,y-11),Scalar(0,255,0),2);
-	line(cameraFeed,Point(x,y),Point(x,y+11),Scalar(0,255,0),2);
-	line(cameraFeed,Point(x,y),Point(x-11,y),Scalar(0,255,0),2);
-	line(cameraFeed,Point(x,y),Point(x+11,y),Scalar(0,255,0),2);
+		//draw some crosshairs around the object
+		circle(cameraFeed,Point(x,y),10,Scalar(0,255,0),2);
+		line(cameraFeed,Point(x,y),Point(x,y-11),Scalar(0,255,0),2);
+		line(cameraFeed,Point(x,y),Point(x,y+11),Scalar(0,255,0),2);
+		line(cameraFeed,Point(x,y),Point(x-11,y),Scalar(0,255,0),2);
+		line(cameraFeed,Point(x,y),Point(x+11,y),Scalar(0,255,0),2);
 	
-	if (toolType == 'R') {
+		if (toolType == 'R') {
+			
+			//write the position of the object to the screen
+			putText(cameraFeed,"Tracking object at (" + intToString(x)+","+intToString(y)+","+intToString(depthVal)+")",Point(x,y),1,1,Scalar(0,0,255),2);
+		}
+		if (toolType == 'L') {
 
-		//write the position of the object to the screen
-		putText(cameraFeed,"Tracking object at (" + intToString(x)+","+intToString(y)+","+intToString(depthVal)+")",Point(x,y),1,1,Scalar(0,0,255),2);
-	}
-	if (toolType == 'L') {
-
-		//write the position of the object to the screen
-		putText(cameraFeed,"Tracking object at (" + intToString(x)+","+intToString(y)+","+intToString(depthVal)+")",Point(x,y),1,1,Scalar(20,255,0),2);
-	}
+			//write the position of the object to the screen
+			putText(cameraFeed,"Tracking object at (" + intToString(x)+","+intToString(y)+","+intToString(depthVal)+")",Point(x,y),1,1,Scalar(20,255,0),2);
+		}
 
    }
    /*
@@ -288,129 +274,197 @@ void searchForMovement(Mat thresholdImage, Mat &cameraFeed, char toolType){
 }
 
 /*----------------------------------------------------------------------------*/
-void getSensorData() {
+void getSensorData(int tool) {
 	if(SP->IsConnected())
 	{
-		SP->WriteData(sendCharacterL,8);
-		readResult = SP->ReadData(incomingData,dataLength);
-		//printf("Bytes read: (-1 means no data available) %i\n",readResult);
+		//if (tool == 1) {
 
-		//readresult value will change!!!
-		if (readResult >= 35) {
-			union {float f1;char b[4];} xAccel;
-			xAccel.b[3] = incomingData[4];
-			xAccel.b[2] = incomingData[3];
-			xAccel.b[1] = incomingData[2];
-			xAccel.b[0] = incomingData[1];
+			SP->WriteData(sendCharacterAll,8);
+			readResult = SP->ReadData(incomingDataL,dataLength);
+			//printf("Bytes read: (-1 means no data available) %i\n",readResult);
+
+			//readresult value will change!!!
+			if (readResult == dataLength && incomingDataL[28]=='^') {
+				union {float f1;char b[4];} xAccel;
+				xAccel.b[3] = incomingDataL[4];
+				xAccel.b[2] = incomingDataL[3];
+				xAccel.b[1] = incomingDataL[2];
+				xAccel.b[0] = incomingDataL[1];
 		
-			union {float f2;char b[4];} yAccel;
-			yAccel.b[3] = incomingData[8];
-			yAccel.b[2] = incomingData[7];
-			yAccel.b[1] = incomingData[6];
-			yAccel.b[0] = incomingData[5];
+				union {float f2;char b[4];} yAccel;
+				yAccel.b[3] = incomingDataL[8];
+				yAccel.b[2] = incomingDataL[7];
+				yAccel.b[1] = incomingDataL[6];
+				yAccel.b[0] = incomingDataL[5];
 
-			union {float f3;char b[4];} zAccel;
-			zAccel.b[3] = incomingData[12];
-			zAccel.b[2] = incomingData[11];
-			zAccel.b[1] = incomingData[10];
-			zAccel.b[0] = incomingData[9];
+				union {float f3;char b[4];} zAccel;
+				zAccel.b[3] = incomingDataL[12];
+				zAccel.b[2] = incomingDataL[11];
+				zAccel.b[1] = incomingDataL[10];
+				zAccel.b[0] = incomingDataL[9];
 
-			union {float f4;char b[4];} xGyro;
-			xGyro.b[3] = incomingData[17];
-			xGyro.b[2] = incomingData[16];
-			xGyro.b[1] = incomingData[15];
-			xGyro.b[0] = incomingData[14];
+				union {float f4;char b[4];} xGyro;
+				xGyro.b[3] = incomingDataL[17];
+				xGyro.b[2] = incomingDataL[16];
+				xGyro.b[1] = incomingDataL[15];
+				xGyro.b[0] = incomingDataL[14];
 		
-			union {float f5;char b[4];} yGyro;
-			yGyro.b[3] = incomingData[21];
-			yGyro.b[2] = incomingData[20];
-			yGyro.b[1] = incomingData[19];
-			yGyro.b[0] = incomingData[18];
+				union {float f5;char b[4];} yGyro;
+				yGyro.b[3] = incomingDataL[21];
+				yGyro.b[2] = incomingDataL[20];
+				yGyro.b[1] = incomingDataL[19];
+				yGyro.b[0] = incomingDataL[18];
 
-			union {float f6;char b[4];} zGyro;
-			zGyro.b[3] = incomingData[25];
-			zGyro.b[2] = incomingData[24];
-			zGyro.b[1] = incomingData[23];
-			zGyro.b[0] = incomingData[22];
+				union {float f6;char b[4];} zGyro;
+				zGyro.b[3] = incomingDataL[25];
+				zGyro.b[2] = incomingDataL[24];
+				zGyro.b[1] = incomingDataL[23];
+				zGyro.b[0] = incomingDataL[22];
 
-			union {int i1;char b[4];} rotary1;
-			rotary1.b[3] = incomingData[32];
-			rotary1.b[2] = incomingData[31];
-			rotary1.b[1] = incomingData[30];
-			rotary1.b[0] = incomingData[29];
+				//union {int i1;char b[4];} rotary1;
+				//rotary1.b[3] = incomingData[32];
+				//rotary1.b[2] = incomingData[31];
+				//rotary1.b[1] = incomingData[30];
+				//rotary1.b[0] = incomingData[29];
 
 
-			GripperData[dataPosition].leftAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
-			float gyro = sqrt(xGyro.f4 *xGyro.f4 + yGyro.f5 * yGyro.f5 + zGyro.f6 * zGyro.f6);
+				GripperData[dataPosition].leftAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3)-9.81;
+				float gyro = sqrt(xGyro.f4 *xGyro.f4 + yGyro.f5 * yGyro.f5 + zGyro.f6 * zGyro.f6);
 
-			printf("\n Acceleration Left Tool: %f\n",GripperData[dataPosition].leftAccel);
-			printf("\n Gyro Left Tool: %f\n",gyro);
-			printf("\nButton L data: %i\n",incomingData[27]);
-			//get gripper status
+				printf("\n Acceleration Left Tool: %f\n",GripperData[dataPosition].leftAccel);
+				printf("\n Gyro Left Tool: %f\n",gyro);
+				//printf("\n Rotary Left Tool: %f\n",rotary1);
+				printf("\nButton L data: %i\n",incomingDataL[27]);
+				//get gripper status
 
-			//get encoder status
+				//get gyro status
 
-			//get gyro status
 
+				if (readResult == dataLength && incomingDataL[57]=='^') {
+				union {float f1;char b[4];} xAccel2;
+				xAccel2.b[3] = incomingDataL[4+29];
+				xAccel2.b[2] = incomingDataL[3+29];
+				xAccel2.b[1] = incomingDataL[2+29];
+				xAccel2.b[0] = incomingDataL[1+29];
+		
+				union {float f2;char b[4];} yAccel2;
+				yAccel2.b[3] = incomingDataL[8+29];
+				yAccel2.b[2] = incomingDataL[7+29];
+				yAccel2.b[1] = incomingDataL[6+29];
+				yAccel2.b[0] = incomingDataL[5+29];
+
+				union {float f3;char b[4];} zAccel2;
+				zAccel2.b[3] = incomingDataL[12+29];
+				zAccel2.b[2] = incomingDataL[11+29];
+				zAccel2.b[1] = incomingDataL[10+29];
+				zAccel2.b[0] = incomingDataL[9+29];
+
+				union {float f4;char b[4];} xGyro2;
+				xGyro2.b[3] = incomingDataL[17+29];
+				xGyro2.b[2] = incomingDataL[16+29];
+				xGyro2.b[1] = incomingDataL[15+29];
+				xGyro2.b[0] = incomingDataL[14+29];
+		
+				union {float f5;char b[4];} yGyro2;
+				yGyro2.b[3] = incomingDataL[21+29];
+				yGyro2.b[2] = incomingDataL[20+29];
+				yGyro2.b[1] = incomingDataL[19+29];
+				yGyro2.b[0] = incomingDataL[18+29];
+
+				union {float f6;char b[4];} zGyro2;
+				zGyro2.b[3] = incomingDataL[25+29];
+				zGyro2.b[2] = incomingDataL[24+29];
+				zGyro2.b[1] = incomingDataL[23+29];
+				zGyro2.b[0] = incomingDataL[22+29];
+
+				//union {int i1;char b[4];} rotary1;
+				//rotary1.b[3] = incomingData[32];
+				//rotary1.b[2] = incomingData[31];
+				//rotary1.b[1] = incomingData[30];
+				//rotary1.b[0] = incomingData[29];
+
+
+				GripperData[dataPosition].rightAccel = sqrt(xAccel2.f1 * xAccel2.f1 + yAccel2.f2 * yAccel2.f2 + zAccel2.f3 * zAccel2.f3)-9.81;
+				float gyro2 = sqrt(xGyro2.f4 *xGyro2.f4 + yGyro2.f5 * yGyro2.f5 + zGyro2.f6 * zGyro2.f6);
+
+				printf("\n Acceleration Right Tool: %f\n",GripperData[dataPosition].rightAccel);
+				printf("\n Gyro Right Tool: %f\n",gyro2);
+				//printf("\n Rotary Left Tool: %f\n",rotary1);
+				printf("\nButton R data: %i\n",incomingDataL[27+29]);
+				//get gripper status
+
+				//get gyro status
+
+
+
+			}
 		}
+
 		/*
-		SP->WriteData(sendCharacterR,8);
-		readResult = SP->ReadData(incomingData,dataLength);
+		else if (tool == 2) {
+			//SP->WriteData(sendCharacterR,8);
+			//readResult = SP->ReadData(incomingDataR,dataLength);
+			//printf("Bytes read: (-1 means no data available) %i\n",readResult);
 
-		if (readResult == 35) {
-			union {float f1;char b[4];} xAccel;
-			xAccel.b[3] = incomingData[4];
-			xAccel.b[2] = incomingData[3];
-			xAccel.b[1] = incomingData[2];
-			xAccel.b[0] = incomingData[1];
+			//readresult value will change!!!
+			if (readResult == dataLength && incomingDataR[28]=='^') {
+				union {float f1;char b[4];} xAccel;
+				xAccel.b[3] = incomingDataR[4];
+				xAccel.b[2] = incomingDataR[3];
+				xAccel.b[1] = incomingDataR[2];
+				xAccel.b[0] = incomingDataR[1];
 		
-			union {float f2;char b[4];} yAccel;
-			yAccel.b[3] = incomingData[8];
-			yAccel.b[2] = incomingData[7];
-			yAccel.b[1] = incomingData[6];
-			yAccel.b[0] = incomingData[5];
+				union {float f2;char b[4];} yAccel;
+				yAccel.b[3] = incomingDataR[8];
+				yAccel.b[2] = incomingDataR[7];
+				yAccel.b[1] = incomingDataR[6];
+				yAccel.b[0] = incomingDataR[5];
 
-			union {float f3;char b[4];} zAccel;
-			zAccel.b[3] = incomingData[12];
-			zAccel.b[2] = incomingData[11];
-			zAccel.b[1] = incomingData[10];
-			zAccel.b[0] = incomingData[9];
+				union {float f3;char b[4];} zAccel;
+				zAccel.b[3] = incomingDataR[12];
+				zAccel.b[2] = incomingDataR[11];
+				zAccel.b[1] = incomingDataR[10];
+				zAccel.b[0] = incomingDataR[9];
 
-			union {float f4;char b[4];} xGyro;
-			xGyro.b[3] = incomingData[17];
-			xGyro.b[2] = incomingData[16];
-			xGyro.b[1] = incomingData[15];
-			xGyro.b[0] = incomingData[14];
+				union {float f4;char b[4];} xGyro;
+				xGyro.b[3] = incomingDataR[17];
+				xGyro.b[2] = incomingDataR[16];
+				xGyro.b[1] = incomingDataR[15];
+				xGyro.b[0] = incomingDataR[14];
 		
-			union {float f5;char b[4];} yGyro;
-			yGyro.b[3] = incomingData[21];
-			yGyro.b[2] = incomingData[20];
-			yGyro.b[1] = incomingData[19];
-			yGyro.b[0] = incomingData[18];
+				union {float f5;char b[4];} yGyro;
+				yGyro.b[3] = incomingDataR[21];
+				yGyro.b[2] = incomingDataR[20];
+				yGyro.b[1] = incomingDataR[19];
+				yGyro.b[0] = incomingDataR[18];
 
-			union {float f6;char b[4];} zGyro;
-			zGyro.b[3] = incomingData[25];
-			zGyro.b[2] = incomingData[24];
-			zGyro.b[1] = incomingData[23];
-			zGyro.b[0] = incomingData[22];
+				union {float f6;char b[4];} zGyro;
+				zGyro.b[3] = incomingDataR[25];
+				zGyro.b[2] = incomingDataR[24];
+				zGyro.b[1] = incomingDataR[23];
+				zGyro.b[0] = incomingDataR[22];
 
-			union {int i1;char b[4];} rotary1;
-			rotary1.b[3] = incomingData[32];
-			rotary1.b[2] = incomingData[31];
-			rotary1.b[1] = incomingData[30];
-			rotary1.b[0] = incomingData[29];
+				/*union {int i1;char b[4];} rotary1;
+				rotary1.b[3] = incomingData[32];
+				rotary1.b[2] = incomingData[31];
+				rotary1.b[1] = incomingData[30];
+				rotary1.b[0] = incomingData[29];
 
 
-			GripperData[dataPosition].rightAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
+				GripperData[dataPosition].rightAccel = sqrt(xAccel.f1 * xAccel.f1 + yAccel.f2 * yAccel.f2 + zAccel.f3 * zAccel.f3);
+				float gyro2 = sqrt(xGyro.f4 *xGyro.f4 + yGyro.f5 * yGyro.f5 + zGyro.f6 * zGyro.f6);
 
-			printf("\n Acceleration Right Tool: %f\n",GripperData[dataPosition].rightAccel);
-			printf("\nButton R data: %i\n",incomingData[27]);
-			//get gripper status
+				printf("\n Acceleration Right Tool: %f\n",GripperData[dataPosition].leftAccel);
+				printf("\n Gyro Right Tool: %f\n",gyro2);
+				//printf("\n Rotary Right Tool: %f\n",rotary1);
+				printf("\nButton R data: %i\n",incomingDataR[27]);
+				//get gripper status
 
-			//get encoder status
+				//get encoder status
 
-			//get gyro status
+				//get gyro status
 
+			}
 		}
 		*/
 
@@ -419,7 +473,8 @@ void getSensorData() {
 
 }
 /*----------------------------------------------------------------------------*/
-float analysis() {
+float analysis(int pegsComplete) {
+	int txComplete = pegsComplete;
 	//float totalResult,tooltipResult,senseResult,bodyResult,taskResult =0;
 	float tooltipResult=0.0;
 	float senseResult=0.0;
@@ -428,6 +483,8 @@ float analysis() {
 	float accelL=0.0;
 	float accelR=0.0;
 	float totalResult=0.0;
+	float max_dist_err = 10;
+	float max_acc_err = 5;
 	int length= sizeof(GripperData)/sizeof(ToolData);
 	int realLength=0;
 
@@ -436,16 +493,31 @@ float analysis() {
 		distanceToolL += sqrt(pow((GripperData[i].leftXPos- GripperExpert[i].leftXPos),2)+pow((GripperData[i].leftYPos- GripperExpert[i].leftYPos),2)+pow((GripperData[i].leftZPos- GripperExpert[i].leftZPos),2));
 		distanceToolR += sqrt(pow((GripperData[i].rightXPos- GripperExpert[i].rightXPos),2)+pow((GripperData[i].rightYPos- GripperExpert[i].rightYPos),2)+pow((GripperData[i].rightZPos- GripperExpert[i].rightZPos),2));
 
+		max_dist_err+=max_dist_err;
+		max_acc_err+=max_acc_err;
 		accelL+=GripperData[i].leftAccel;
 		accelR+=GripperData[i].rightAccel;
 
 
 	}
 
-	tooltipResult = (distanceToolR+ distanceToolL)/ (2*length);
-	senseResult = (accelR+ accelL)/ (2*length);
-	totalResult = senseResult + tooltipResult;
+	tooltipResult = (distanceToolR+distanceToolL)/ (2*max_dist_err);
+	senseResult = (accelR+accelL)/ (2*max_acc_err);
+	if (tooltipResult >1) {
+		tooltipResult=1;
+	}
+	if (senseResult >1) {
+		senseResult=1;
+	}
+
+	if (txComplete >5) {
+		txComplete =5;
+	}
+		
+
+	totalResult = senseResult*0.1 + tooltipResult*0.4 + 0.3* (float)(txComplete/5) ;
 	//more analysis needed, currently, priority is given to Right tool
+	//add save to file functionality here?
 
 	return totalResult;
 }
@@ -460,10 +532,13 @@ void onNewAudioSample(AudioNode node, AudioNode::NewSampleReceivedData data)
 // New color sample event handler
 void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 {
-   // printf("C#%u: %d\n",g_cFrames,data.colorMap.size());
-    g_cFrames++;
+	g_cFrames++;
+	// Quit the main loop after 7500 depth frames received
+		if (g_cFrames >= 7501)
+			g_context.quit();
+
 	int32_t w, h;
-	Mat modFrame,graymat,graymod,threshFrame,finalFrame;
+	Mat modFrame,graymat,graymod,threshFrame;
 	w=1280;
 	h=720;
 	FrameFormat_toResolution(data.captureConfiguration.frameFormat,&w,&h);
@@ -484,7 +559,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 		
 		Mat imgHSV;
 		cvtColor(livefeed, imgHSV, COLOR_BGR2HSV); //Convert the captured frame from BGR to HSV
-		Mat imgThresholded, imgThresholded2;
+		
 
 		inRange(imgHSV, Scalar(iLowH, iLowS, iLowV), Scalar(iHighH, iHighS, iHighV), imgThresholded); //Threshold the image
       
@@ -497,6 +572,7 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 		erode(imgThresholded, imgThresholded, getStructuringElement(MORPH_ELLIPSE, Size(5, 5)) );
 
 		searchForMovement(imgThresholded,finalFrame,'R');
+		getSensorData(2);
 
 		inRange(imgHSV, Scalar(iLowH2, iLowS2, iLowV2), Scalar(iHighH2, iHighS2, iHighV2), imgThresholded2); //Threshold the image
 		
@@ -511,10 +587,10 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 		
 		
 		searchForMovement(imgThresholded2,finalFrame,'L');
-		getSensorData();
+		getSensorData(1);
 
-		imshow("Thresholded Image Red", imgThresholded); //show the thresholded image
-		imshow("Thresholded Image Green", imgThresholded2); //show the thresholded image
+		//imshow("Thresholded Image Red", imgThresholded); //show the thresholded image
+		//imshow("Thresholded Image Green", imgThresholded2); //show the thresholded image
 		//imshow("Thresholded Image Before", imgHSV); //show the thresholded image
 		prevFrame = livefeed.clone();
 
@@ -530,9 +606,6 @@ void onNewColorSample(ColorNode node, ColorNode::NewSampleReceivedData data)
 			printf("Quitting main loop from OpenCV\n");
 			g_context.quit();
 
-		// Quit the main loop after 7500 depth frames received
-		if (g_cFrames >= 7500)
-			g_context.quit();
 		}
 	}
 }
@@ -570,7 +643,7 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
   
 	// show depth image
 	if ( data.depthMap != nullptr ) {
-		//cv::Mat mat( h, w, CV_16SC1, (void*)(const int16_t*)data.depthMap );
+		
 		cv::Mat depthfeed(h,w,CV_16SC1,(void*)(const int16_t*)data.depthMap);   
 		//cv::Mat mat( h, w, CV_32SC1, (void*)(const float*)data.depthMapFloatingPoint); 
 		//cvShowImage("Depth Camera", cvCloneImage(&(IplImage)mat));
@@ -585,16 +658,10 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 		}
 		Mat depthRR(g_depthImage);
 
-
-
-		//cv::waitKey(1);
 		double xDL =ceil(gripperLeft[0]/4);
 		double yDL =ceil(gripperLeft[1]/3);
 		double xDR =ceil(gripperRight[0]/4);
 		double yDR =ceil(gripperRight[1]/3);
-		//int16_t leftDepth = (depthfeed.at<int16_t>(yDL,xDL));
-		//int16_t rightDepth = (depthfeed.at<int16_t>(yDR,xDR));
-
 
 		leftDepth = (depthRR.at<int16_t>(yDL,xDL));
 		rightDepth = (depthRR.at<int16_t>(yDR,xDR));
@@ -607,10 +674,12 @@ void onNewDepthSample(DepthNode node, DepthNode::NewSampleReceivedData data)
 		if (rightDepth >=0 && rightDepth <= 31999) {
 		gripperRight[2] = rightDepth;
 		}
+
+		//show depth feed
 		//cv::imshow("Depth Camera", depthRR);
 	}
 
-	   g_dFrames++;
+	g_dFrames++;
 }
 
 /*// old depth sample event handler
@@ -845,8 +914,8 @@ void onDeviceDisconnected(Context context, Context::DeviceRemovedData data)
 /*----------------------------------------------------------------------------*/
 void sensorConnect() {
 	SP = new Serial("COM6");    // adjust as needed
-	if (SP->IsConnected())
-		printf("We're connected\n");
+	//if (SP->IsConnected())
+		//printf("We're connected\n");
 
 }
 /*----------------------------------------------------------------------------*/
@@ -935,15 +1004,17 @@ void loadExpert() {
 }
 /*----------------------------------------------------------------------------*/
 
+int main(int argc, char* argv[]) {
 
-int main(int argc, char* argv[])
-{
 	printf("Press Enter to Start \n");
 	getchar();
 	Sleep(5000);
+
+	char recievedChar;
+	int numCompleted =0;
 	loadExpert();
 	//getchar();
-	float finalResult =0.0;
+	float finalAnalysis =0.0;
     g_context = Context::create("localhost");
     g_context.deviceAddedEvent().connect(&onDeviceConnected);
     g_context.deviceRemovedEvent().connect(&onDeviceDisconnected);
@@ -993,6 +1064,7 @@ int main(int argc, char* argv[])
 	cvCreateTrackbar("LowV2","Control", &iLowV2, 255); //Value (0 - 255)
 	cvCreateTrackbar("HighV2","Control", &iHighV2, 255);
 	*/
+	
 	sensorConnect();
 	g_depthImage = cvCreateImage(g_szDepth,IPL_DEPTH_16S,1);
     g_context.startNodes();
@@ -1006,13 +1078,33 @@ int main(int argc, char* argv[])
     if (g_pProjHelper)
         delete g_pProjHelper;
 
+	printf("Time Expired: Press 'e' to save as Expert. Press anything else for Analysis \n");
+	recievedChar = getchar();
+	getchar();//filter out 'Enter' keypress
+	if (recievedChar == 'e') {
+		saveAsExpert();
+		printf("Expert Data Saved \n");
+	}
 
-	saveAsExpert();
-	//getchar();
-	finalResult = analysis();
-	printf("Analysis Complete, Total Result: %f \n",finalResult);
-	getchar();
+	while(1) {
+		printf("Enter Number of Pegs Transferred out of 5 \n");
+		numCompleted = (int) getchar() -'0';
+		getchar();//filter out 'Enter' keypress
+		if (numCompleted <0 ||numCompleted >9){
+			printf("Try Again with a valid number \n");
+		}
+		else {
+		printf("%d Number of Pegs Transferred out of 5 \n",numCompleted);
+		finalAnalysis = analysis(numCompleted);
+		printf("Analysis Complete, Total Result: %f \n",finalAnalysis);
+		//more analysis printout here
+
+
+		break;
+		}
+	}
+
+	system("pause");
 
     return 0;
 }
-
